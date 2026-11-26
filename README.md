@@ -202,6 +202,8 @@ php artisan route:list --path=api
 
 Las pruebas crean usuarios y tokens JWT reales; validan hash de contraseña, login, expiración, firma distinta, JWT manipulado, logout y reutilización de token revocado. Todas las operaciones de libros se prueban con JWT y se comprueba también el rechazo de cada método sin token. SQLite en memoria mantiene estas pruebas aisladas de la base local.
 
+Última ejecución comprobada: **17 pruebas aprobadas, 119 aserciones y 0 fallidas**. Laravel Pint pasó y `composer audit` no reportó avisos de seguridad.
+
 ## Seguridad y límites
 
 `.env`, `.env.testing`, secretos JWT, `APP_KEY`, logs, cachés, base local, `vendor/` y archivos de respaldo se excluyen de Git. `.env.example` contiene valores de muestra sin claves. No se incluyen usuarios demo ni contraseñas administrativas fijas. El registro/login limita a cinco solicitudes por minuto y usa mensajes genéricos para credenciales.
