@@ -1,0 +1,267 @@
+openapi: 3.1.0
+info:
+  title: Biblioteca Atenea API
+  version: 1.0.0
+  description: API bibliotecaria protegida con JSON Web Tokens. Registro e inicio de sesión son públicos; perfil, cierre de sesión y catálogo requieren Bearer JWT. Tokens con expiración de 60 minutos e invalidación mediante blacklist.
+servers:
+  - url: /api
+    description: Servidor local
+tags:
+  - name: Autenticación
+  - name: Libros
+paths:
+  /auth/register:
+    post:
+      tags: [Autenticación]
+      summary: Registrar una cuenta y obtener un token JWT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterInput' }
+            example: { name: Ana Rivera, email: ana@example.com, password: '<CONTRASEÑA_SEGURA>', password_confirmation: '<CONTRASEÑA_SEGURA>' }
+      responses:
+        '201': { $ref: '#/components/responses/TokenCreated' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { description: Demasiados intentos de autenticación }
+  /auth/login:
+    post:
+      tags: [Autenticación]
+      summary: Iniciar sesión
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginInput' }
+      responses:
+        '200': { $ref: '#/components/responses/TokenCreated' }
+        '401': { description: Credenciales incorrectas }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { description: Demasiados intentos de autenticación }
+  /auth/me:
+    get:
+      tags: [Autenticación]
+      summary: Obtener perfil autenticado
+      security: [{ BearerJWT: [] }]
+      responses:
+        '200':
+          description: Perfil público del usuario autenticado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /auth/logout:
+    post:
+      tags: [Autenticación]
+      summary: Cerrar sesión e invalidar el token actual
+      security: [{ BearerJWT: [] }]
+      responses:
+        '200':
+          description: Token añadido a la blacklist
+          content:
+            application/json:
+              example: { message: La sesión se cerró correctamente. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /books:
+    get:
+      tags: [Libros]
+      summary: Listar y filtrar libros
+      security: [{ BearerJWT: [] }]
+      parameters:
+        - in: query
+          name: search
+          schema: { type: string }
+          description: Buscar por título o autor
+        - in: query
+          name: category
+          schema: { type: string, enum: [literatura, ciencia, tecnologia, historia, educacion, desarrollo-personal] }
+        - in: query
+          name: per_page
+          schema: { type: integer, minimum: 1, maximum: 100, default: 12 }
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1, default: 1 }
+      responses:
+        '200': { $ref: '#/components/responses/BookCollection' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Libros]
+      summary: Añadir un libro
+      security: [{ BearerJWT: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BookInput' }
+            example: { title: El nombre del viento, author: Patrick Rothfuss, isbn: '9780756404741', description: Una novela fantástica sobre Kvothe., category: literatura, publication_year: 2007, stock: 3 }
+      responses:
+        '201': { $ref: '#/components/responses/BookCreated' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /books/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer, minimum: 1 }
+    get:
+      tags: [Libros]
+      summary: Consultar un libro
+      security: [{ BearerJWT: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/BookCreated' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Libros]
+      summary: Reemplazar los datos de un libro
+      security: [{ BearerJWT: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BookInput' }
+      responses:
+        '200': { $ref: '#/components/responses/BookCreated' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    patch:
+      tags: [Libros]
+      summary: Actualizar parcialmente un libro
+      security: [{ BearerJWT: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BookPatch' }
+            example: { stock: 2 }
+      responses:
+        '200': { $ref: '#/components/responses/BookCreated' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    delete:
+      tags: [Libros]
+      summary: Eliminar un libro
+      security: [{ BearerJWT: [] }]
+      responses:
+        '204': { description: Libro eliminado sin contenido }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+components:
+  securitySchemes:
+    BearerJWT:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Token emitido por POST /auth/login o POST /auth/register. Se envía como Authorization Bearer.
+  schemas:
+    RegisterInput:
+      type: object
+      required: [name, email, password, password_confirmation]
+      properties:
+        name: { type: string, maxLength: 120 }
+        email: { type: string, format: email }
+        password: { type: string, format: password, minLength: 10, description: 'Mínimo 10 caracteres con mayúsculas, minúsculas y números' }
+        password_confirmation: { type: string, format: password }
+    LoginInput:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, format: password }
+    BookInput:
+      type: object
+      required: [title, author, isbn, description, category, publication_year, stock]
+      properties:
+        title: { type: string, maxLength: 180 }
+        author: { type: string, maxLength: 120 }
+        isbn: { type: string, pattern: '^(?:\d{10}|\d{13})$', description: 'ISBN normalizado con 10 o 13 dígitos' }
+        description: { type: string, maxLength: 5000 }
+        category: { type: string, enum: [literatura, ciencia, tecnologia, historia, educacion, desarrollo-personal] }
+        publication_year: { type: integer, minimum: 1450 }
+        stock: { type: integer, minimum: 0 }
+    BookPatch:
+      type: object
+      minProperties: 1
+      properties:
+        title: { type: string, maxLength: 180 }
+        author: { type: string, maxLength: 120 }
+        isbn: { type: string, pattern: '^(?:\d{10}|\d{13})$' }
+        description: { type: string, maxLength: 5000 }
+        category: { type: string, enum: [literatura, ciencia, tecnologia, historia, educacion, desarrollo-personal] }
+        publication_year: { type: integer, minimum: 1450 }
+        stock: { type: integer, minimum: 0 }
+    Book:
+      allOf:
+        - $ref: '#/components/schemas/BookInput'
+        - type: object
+          properties:
+            id: { type: integer }
+            is_available: { type: boolean, description: 'Calculado como stock mayor que cero' }
+            created_at: { type: string, format: date-time }
+            updated_at: { type: string, format: date-time }
+    User:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        email: { type: string, format: email }
+        created_at: { type: string, format: date-time }
+    AuthToken:
+      type: object
+      properties:
+        access_token: { type: string, description: JWT firmado; no se debe publicar }
+        token_type: { type: string, example: bearer }
+        expires_in: { type: integer, example: 3600, description: Duración en segundos }
+        user: { $ref: '#/components/schemas/User' }
+  responses:
+    TokenCreated:
+      description: Token JWT emitido (expira en 60 minutos)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/AuthToken' }
+    BookCreated:
+      description: Libro encontrado, creado o actualizado
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data: { $ref: '#/components/schemas/Book' }
+    BookCollection:
+      description: Colección paginada de libros
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data:
+                type: array
+                items: { $ref: '#/components/schemas/Book' }
+              links: { type: object }
+              meta: { type: object }
+    UserResponse:
+      description: Perfil sin credenciales ni atributos sensibles
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data: { $ref: '#/components/schemas/User' }
+    Unauthorized:
+      description: Token ausente, inválido, expirado o revocado
+      content:
+        application/json:
+          example: { message: No autenticado. }
+    NotFound:
+      description: Libro inexistente
+      content:
+        application/json:
+          example: { message: El recurso solicitado no existe. }
+    ValidationError:
+      description: Datos de solicitud inválidos
+      content:
+        application/json:
+          example: { message: Los datos proporcionados no son válidos., errors: { stock: [Las existencias no pueden ser negativas.] } }

@@ -1,0 +1,64 @@
+{
+  "info": {
+    "_postman_id": "6dbd47b1-97df-4958-9223-06df80a6ef4f",
+    "name": "Biblioteca Atenea — JWT API",
+    "description": "Flujo de registro, autenticación JWT, CRUD protegido y comprobaciones de seguridad. Ejecuta las carpetas en orden; los scripts mantienen tokens únicamente en variables de la colección activa.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://127.0.0.1:8015/api" },
+    { "key": "access_token", "value": "" },
+    { "key": "revoked_token", "value": "" },
+    { "key": "book_id", "value": "1" },
+    { "key": "user_email", "value": "" },
+    { "key": "user_password", "value": "" },
+    { "key": "tampered_token", "value": "not.a.valid.jwt" }
+  ],
+  "item": [
+    {
+      "name": "Autenticación",
+      "item": [
+        {
+          "name": "Registrar cuenta",
+          "event": [
+            { "listen": "prerequest", "script": { "exec": ["if (!pm.collectionVariables.get('user_email')) pm.collectionVariables.set('user_email', 'lectora.' + Date.now() + '@example.test');", "if (!pm.collectionVariables.get('user_password')) pm.collectionVariables.set('user_password', 'Lectura' + Date.now() + 'aB!');"] } },
+            { "listen": "test", "script": { "exec": ["pm.test('HTTP 201', () => pm.response.to.have.status(201));", "const body = pm.response.json();", "pm.test('JWT, usuario seguro y TTL de 3600 s', () => { pm.expect(body.access_token).to.be.a('string'); pm.expect(body.token_type).to.eql('bearer'); pm.expect(body.expires_in).to.eql(3600); pm.expect(body.user).to.not.have.property('password'); });", "pm.collectionVariables.set('access_token', body.access_token);"] } }
+          ],
+          "request": { "method": "POST", "header": [{ "key": "Accept", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"name\": \"Lectora de prueba\",\n  \"email\": \"{{user_email}}\",\n  \"password\": \"{{user_password}}\",\n  \"password_confirmation\": \"{{user_password}}\"\n}", "options": { "raw": { "language": "json" } } }, "url": "{{base_url}}/auth/register" }
+        },
+        {
+          "name": "Iniciar sesión",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('HTTP 200', () => pm.response.to.have.status(200));", "const body = pm.response.json();", "pm.test('Emite token bearer de una hora', () => { pm.expect(body.access_token).to.be.a('string'); pm.expect(body.expires_in).to.eql(3600); });", "pm.collectionVariables.set('access_token', body.access_token);"] } }],
+          "request": { "method": "POST", "header": [{ "key": "Accept", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{user_email}}\",\n  \"password\": \"{{user_password}}\"\n}", "options": { "raw": { "language": "json" } } }, "url": "{{base_url}}/auth/login" }
+        },
+        {
+          "name": "Consultar perfil",
+          "event": [{ "listen": "test", "script": { "exec": ["pm.test('HTTP 200', () => pm.response.to.have.status(200));", "const user = pm.response.json().data;", "pm.test('Perfil no expone credenciales', () => { pm.expect(user.email).to.eql(pm.collectionVariables.get('user_email')); pm.expect(user).to.not.have.property('password'); });"] } }],
+          "request": { "method": "GET", "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{access_token}}" }], "url": "{{base_url}}/auth/me" }
+        }
+      ]
+    },
+    {
+      "name": "Libros protegidos",
+      "item": [
+        { "name": "Listar libros", "event": [{ "listen": "test", "script": { "exec": ["pm.test('HTTP 200', () => pm.response.to.have.status(200));", "pm.test('Respuesta paginada', () => pm.expect(pm.response.json()).to.have.property('meta'));", "if (pm.response.json().data.length) pm.collectionVariables.set('book_id', pm.response.json().data[0].id);"] } }], "request": { "method": "GET", "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{access_token}}" }], "url": "{{base_url}}/books?per_page=12" } },
+        { "name": "Consultar libro", "event": [{ "listen": "test", "script": { "exec": ["pm.test('HTTP 200', () => pm.response.to.have.status(200));", "pm.test('Datos bibliográficos presentes', () => pm.expect(pm.response.json().data).to.have.property('isbn'));" ] } }], "request": { "method": "GET", "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{access_token}}" }], "url": "{{base_url}}/books/{{book_id}}" } },
+        { "name": "Crear libro", "event": [{ "listen": "test", "script": { "exec": ["pm.test('HTTP 201', () => pm.response.to.have.status(201));", "pm.collectionVariables.set('book_id', pm.response.json().data.id);"] } }], "request": { "method": "POST", "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{access_token}}" }], "body": { "mode": "raw", "raw": "{\n  \"title\": \"Libro temporal de Postman\",\n  \"author\": \"Autora de prueba\",\n  \"isbn\": \"9781234567897\",\n  \"description\": \"Registro para validar el CRUD protegido.\",\n  \"category\": \"literatura\",\n  \"publication_year\": 2020,\n  \"stock\": 2\n}", "options": { "raw": { "language": "json" } } }, "url": "{{base_url}}/books" } },
+        { "name": "Actualizar libro (PUT)", "event": [{ "listen": "test", "script": { "exec": ["pm.test('HTTP 200', () => pm.response.to.have.status(200));", "pm.test('Título actualizado', () => pm.expect(pm.response.json().data.title).to.eql('Libro temporal actualizado'));" ] } }], "request": { "method": "PUT", "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{access_token}}" }], "body": { "mode": "raw", "raw": "{\n  \"title\": \"Libro temporal actualizado\",\n  \"author\": \"Autora de prueba\",\n  \"isbn\": \"9781234567897\",\n  \"description\": \"Registro actualizado para validar el CRUD.\",\n  \"category\": \"literatura\",\n  \"publication_year\": 2021,\n  \"stock\": 2\n}", "options": { "raw": { "language": "json" } } }, "url": "{{base_url}}/books/{{book_id}}" } },
+        { "name": "Actualizar existencias (PATCH)", "event": [{ "listen": "test", "script": { "exec": ["pm.test('HTTP 200', () => pm.response.to.have.status(200));", "pm.test('Stock cambia; disponibilidad se deriva', () => { pm.expect(pm.response.json().data.stock).to.eql(0); pm.expect(pm.response.json().data.is_available).to.eql(false); });" ] } }], "request": { "method": "PATCH", "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{access_token}}" }], "body": { "mode": "raw", "raw": "{\n  \"stock\": 0\n}", "options": { "raw": { "language": "json" } } }, "url": "{{base_url}}/books/{{book_id}}" } },
+        { "name": "Eliminar libro", "event": [{ "listen": "test", "script": { "exec": ["pm.test('HTTP 204', () => pm.response.to.have.status(204));" ] } }], "request": { "method": "DELETE", "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{access_token}}" }], "url": "{{base_url}}/books/{{book_id}}" } }
+      ]
+    },
+    {
+      "name": "Seguridad y cierre",
+      "item": [
+        { "name": "Rechazar acceso sin token", "event": [{ "listen": "test", "script": { "exec": ["pm.test('HTTP 401', () => pm.response.to.have.status(401));" ] } }], "request": { "method": "GET", "header": [{ "key": "Accept", "value": "application/json" }], "url": "{{base_url}}/books" } },
+        { "name": "Rechazar token manipulado", "event": [{ "listen": "prerequest", "script": { "exec": ["const token = pm.collectionVariables.get('access_token');", "if (token) pm.collectionVariables.set('tampered_token', token.slice(0, -1) + (token.endsWith('a') ? 'b' : 'a'));"] } }, { "listen": "test", "script": { "exec": ["pm.test('HTTP 401', () => pm.response.to.have.status(401));" ] } }], "request": { "method": "GET", "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{tampered_token}}" }], "url": "{{base_url}}/books" } },
+        { "name": "Credenciales incorrectas", "event": [{ "listen": "test", "script": { "exec": ["pm.test('HTTP 401 y mensaje genérico', () => { pm.response.to.have.status(401); pm.expect(pm.response.json().message).to.eql('Credenciales incorrectas.'); });" ] } }], "request": { "method": "POST", "header": [{ "key": "Accept", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"email\": \"no-existe@example.test\",\n  \"password\": \"CredencialIncorrecta2026!\"\n}", "options": { "raw": { "language": "json" } } }, "url": "{{base_url}}/auth/login" } },
+        { "name": "Datos de registro inválidos", "event": [{ "listen": "test", "script": { "exec": ["pm.test('HTTP 422 con errores por campo', () => { pm.response.to.have.status(422); pm.expect(pm.response.json()).to.have.property('errors'); });" ] } }], "request": { "method": "POST", "header": [{ "key": "Accept", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"name\": \"\",\n  \"email\": \"correo-inválido\",\n  \"password\": \"débil\",\n  \"password_confirmation\": \"otra\"\n}", "options": { "raw": { "language": "json" } } }, "url": "{{base_url}}/auth/register" } },
+        { "name": "Cerrar sesión e invalidar token", "event": [{ "listen": "prerequest", "script": { "exec": ["pm.collectionVariables.set('revoked_token', pm.collectionVariables.get('access_token'));"] } }, { "listen": "test", "script": { "exec": ["pm.test('HTTP 200', () => pm.response.to.have.status(200));", "pm.collectionVariables.unset('access_token');" ] } }], "request": { "method": "POST", "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{access_token}}" }], "url": "{{base_url}}/auth/logout" } },
+        { "name": "Rechazar token revocado", "event": [{ "listen": "test", "script": { "exec": ["pm.test('Token invalidado devuelve HTTP 401', () => pm.response.to.have.status(401));" ] } }], "request": { "method": "GET", "header": [{ "key": "Accept", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{revoked_token}}" }], "url": "{{base_url}}/auth/me" } }
+      ]
+    }
+  ]
+}
